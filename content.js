@@ -14,19 +14,19 @@
     const currencyPatterns = {
         USD: {
             symbols: ['$', 'USD', 'usd'],
-            regex: /\$\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s?\b(thousand|million|billion|trillion)\b|\$\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s?([kKmMbBtT])|(\d+(?:,\d{3})*(?:\.\d+)?)\s?\b(thousand|million|billion|trillion)\b\s?USD|(\d+(?:,\d{3})*(?:\.\d+)?)\s?([kKmMbBtT])\s?USD/gi
+            regex: /\$\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s?\b(thousand|million|billion|trillion)\b|\$\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s?([kKmMbBtT])|(\d+(?:,\d{3})*(?:\.\d+)?)\s?\b(thousand|million|billion|trillion)\b\s?USD|(\d+(?:,\d{3})*(?:\.\d+)?)\s?([kKmMbBtT])\s?USD|\$\s?(\d{1,3}(?:,\d{3})*(?:\.\d+)?)(?!\w)|(?<!\w)(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s?USD/gi
         },
         EUR: {
             symbols: ['€', 'EUR', 'eur'],
-            regex: /€\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s?\b(thousand|million|billion|trillion)\b|€\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s?([kKmMbBtT])|(\d+(?:,\d{3})*(?:\.\d+)?)\s?\b(thousand|million|billion|trillion)\b\s?EUR|(\d+(?:,\d{3})*(?:\.\d+)?)\s?([kKmMbBtT])\s?EUR/gi
+            regex: /€\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s?\b(thousand|million|billion|trillion)\b|€\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s?([kKmMbBtT])|(\d+(?:,\d{3})*(?:\.\d+)?)\s?\b(thousand|million|billion|trillion)\b\s?EUR|(\d+(?:,\d{3})*(?:\.\d+)?)\s?([kKmMbBtT])\s?EUR|€\s?(\d{1,3}(?:,\d{3})*(?:\.\d+)?)(?!\w)|(?<!\w)(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s?EUR/gi
         },
         GBP: {
             symbols: ['£', 'GBP', 'gbp'],
-            regex: /£\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s?\b(thousand|million|billion|trillion)\b|£\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s?([kKmMbBtT])|(\d+(?:,\d{3})*(?:\.\d+)?)\s?\b(thousand|million|billion|trillion)\b\s?GBP|(\d+(?:,\d{3})*(?:\.\d+)?)\s?([kKmMbBtT])\s?GBP/gi
+            regex: /£\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s?\b(thousand|million|billion|trillion)\b|£\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s?([kKmMbBtT])|(\d+(?:,\d{3})*(?:\.\d+)?)\s?\b(thousand|million|billion|trillion)\b\s?GBP|(\d+(?:,\d{3})*(?:\.\d+)?)\s?([kKmMbBtT])\s?GBP|£\s?(\d{1,3}(?:,\d{3})*(?:\.\d+)?)(?!\w)|(?<!\w)(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s?GBP/gi
         },
         JPY: {
             symbols: ['¥', 'JPY', 'jpy'],
-            regex: /¥\s?(\d+(?:,\d{3})*)\s?\b(thousand|million|billion|trillion)\b|¥\s?(\d+(?:,\d{3})*)\s?([kKmMbBtT])|(\d+(?:,\d{3})*)\s?\b(thousand|million|billion|trillion)\b\s?JPY|(\d+(?:,\d{3})*)\s?([kKmMbBtT])\s?JPY/gi
+            regex: /¥\s?(\d+(?:,\d{3})*)\s?\b(thousand|million|billion|trillion)\b|¥\s?(\d+(?:,\d{3})*)\s?([kKmMbBtT])|(\d+(?:,\d{3})*)\s?\b(thousand|million|billion|trillion)\b\s?JPY|(\d+(?:,\d{3})*)\s?([kKmMbBtT])\s?JPY|¥\s?(\d{1,3}(?:,\d{3})*)(?!\w)|(?<!\w)(\d{1,3}(?:,\d{3})*)\s?JPY/gi
         }
     };
 
@@ -169,7 +169,7 @@
         
                 // Check each currency pattern
         currencyEntries.forEach(([currency, pattern]) => {
-            text = text.replace(pattern.regex, (match, g1, g2, g3, g4, g5, g6, g7, g8) => {
+            text = text.replace(pattern.regex, (match, g1, g2, g3, g4, g5, g6, g7, g8, g9, g10) => {
                 hasMatch = true;
                 
                 // Determine number and abbreviation from the captured groups
@@ -191,6 +191,14 @@
                     // Text format with single letter (e.g., 150k USD)
                     numberStr = g7;
                     abbreviation = g8;
+                } else if (g9) {
+                    // Regular price with symbol (e.g., $12.99)
+                    numberStr = g9;
+                    abbreviation = null;
+                } else if (g10) {
+                    // Regular price with suffix (e.g., 12.99 USD)
+                    numberStr = g10;
+                    abbreviation = null;
                 } else {
                     return match;
                 }
