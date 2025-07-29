@@ -6,6 +6,9 @@
     let isEnabled = true;
     let processedElements = new WeakSet();
     let isProcessingOwnChanges = false;
+    
+    // Check if we're on Amazon
+    const isAmazonSite = window.location.hostname.includes('amazon.com');
 
     // Currency symbols and patterns
     const currencyPatterns = {
@@ -30,6 +33,31 @@
     // Pre-parse currency patterns once for performance
     const currencyEntries = Object.entries(currencyPatterns);
 
+    // Helper function to check if element should be skipped on Amazon
+    function shouldSkipAmazonElement(element) {
+        if (!isAmazonSite) return false;
+        
+        // Check if element or any parent has comparison-table in ID or class
+        let currentElement = element;
+        while (currentElement && currentElement !== document.body) {
+            // Check ID
+            if (currentElement.id && currentElement.id.includes('comparison-table')) {
+                return true;
+            }
+            
+            // Check class
+            if (currentElement.className && 
+                typeof currentElement.className === 'string' && 
+                currentElement.className.includes('comparison-table')) {
+                return true;
+            }
+            
+            currentElement = currentElement.parentElement;
+        }
+        
+        return false;
+    }
+
     // Initialize the extension
     function init() {
         // Get Bitcoin price and settings from background
@@ -41,7 +69,7 @@
                     isEnabled = result.isEnabled !== false; // Default to true
                     if (isEnabled && bitcoinPrice) {
                         processPage();
-                        observeChanges();
+                        // observeChanges();
                     }
                 });
             }
@@ -80,6 +108,12 @@
             textNode.parentNode.classList?.contains('sats-converted') ||
             textNode.parentNode.classList?.contains('a-offscreen') ||
             textNode.parentNode.querySelector?.('.sats-converted'))) {
+            return;
+        }
+
+        // Skip Amazon comparison table elements
+        if (shouldSkipAmazonElement(textNode.parentNode)) {
+            console.log('skipping amazon element in processTextNode');
             return;
         }
         
@@ -126,13 +160,23 @@
             element.classList?.contains('a-offscreen') ||
             element.querySelector?.('.sats-converted')) return;
 
+        // Skip Amazon comparison table elements
+        if (shouldSkipAmazonElement(element))  {
+            console.log('skipping amazon element in processStructuredPrices');
+            return;
+        }
+
         // Look for Amazon-style price structures
         const priceContainers = element.querySelectorAll('span[aria-hidden="true"]');
         
         priceContainers.forEach(container => {
             if (processedElements.has(container) 
                     || container.classList.contains('sats-converted') 
-                    || container.classList.contains('a-offscreen')) return;
+                    || container.classList.contains('a-offscreen') 
+                    || shouldSkipAmazonElement(container)) {
+                        console.log('skipping amazon element in processStructuredPrices');
+                        return;
+                    }
             
             const symbolEl = container.querySelector('.a-price-symbol');
             const wholeEl = container.querySelector('.a-price-whole');
@@ -170,44 +214,6 @@
                 }
             }
         });
-
-        // Also look for other common price structures
-        const genericPriceElements = element.querySelectorAll('[class*="price"], [class*="cost"], [class*="amount"]');
-        genericPriceElements.forEach(priceEl => {
-            if (processedElements.has(priceEl) || 
-                priceEl.classList.contains('sats-converted') ||
-                priceEl.classList.contains('a-offscreen') ||
-                priceEl.querySelector('.sats-converted')) return;
-            
-            const text = priceEl.textContent;
-            let hasMatch = false;
-            let newHTML = text;
-            
-            // Check each currency pattern on the combined text
-            currencyEntries.forEach(([currency, pattern]) => {
-                newHTML = newHTML.replace(pattern.regex, (match, group1, group2) => {
-                    hasMatch = true;
-                    const amount = parseFloat((group1 || group2).replace(/,/g, ''));
-                    const sats = convertToSats(amount, currency);
-                    
-                                         if (sats !== null && sats < 100000000) {
-                         const satsIconURL = chrome.runtime.getURL('icons/icon16.png');
-                         return `<span class="sats-converted" style="color: #f7931a; font-weight: bold; white-space: nowrap;"><img src="${satsIconURL}" style="height: 15px; width: 15px; vertical-align: middle; margin-right: 2px;">${formatNumber(sats)}</span>`;
-                     } else if (sats !== null && sats >= 100000000) {
-                        const btcAmount = formatNumber((sats / 100000000).toFixed(3));
-                        return `<span class="sats-converted" style="color: #f7931a; font-weight: bold; white-space: nowrap;">₿${btcAmount}</span>`;
-                    }
-                    return match;
-                });
-            });
-            
-            if (hasMatch) {
-                isProcessingOwnChanges = true;
-                priceEl.innerHTML = newHTML;
-                isProcessingOwnChanges = false;
-                processedElements.add(priceEl);
-            }
-        });
     }
 
     // Process all text nodes in an element
@@ -215,7 +221,8 @@
         if (processedElements.has(element) || 
             element.classList?.contains('sats-converted') ||
             element.classList?.contains('a-offscreen') ||
-            element.querySelector?.('.sats-converted')) return;
+            element.querySelector?.('.sats-converted') ||
+            shouldSkipAmazonElement(element)) return;
         
         // First, handle structured prices
         processStructuredPrices(element);
@@ -234,7 +241,8 @@
                         parent.classList?.contains('sats-converted') ||
                         parent.classList?.contains('a-offscreen') ||
                         parent.closest?.('.sats-converted') ||
-                        processedElements.has(parent)) {
+                        processedElements.has(parent) ||
+                        shouldSkipAmazonElement(parent)) {
                         return NodeFilter.FILTER_REJECT;
                     }
                     return NodeFilter.FILTER_ACCEPT;
@@ -258,26 +266,27 @@
     }
 
     // Observe DOM changes for dynamic content
-    function observeChanges() {
-        const observer = new MutationObserver((mutations) => {
-            if (!isEnabled || !bitcoinPrice || isProcessingOwnChanges) return;
+    // function observeChanges() {
+    //     const observer = new MutationObserver((mutations) => {
+    //         if (!isEnabled || !bitcoinPrice || isProcessingOwnChanges) return;
             
-            mutations.forEach((mutation) => {
-                mutation.addedNodes.forEach((node) => {
-                    if (node.nodeType === Node.ELEMENT_NODE && 
-                        !node.classList?.contains('sats-converted') &&
-                        !node.querySelector?.('.sats-converted')) {
-                        processElement(node);
-                    }
-                });
-            });
-        });
+    //         mutations.forEach((mutation) => {
+    //             mutation.addedNodes.forEach((node) => {
+    //                 if (node.nodeType === Node.ELEMENT_NODE && 
+    //                     !node.classList?.contains('sats-converted') &&
+    //                     !node.querySelector?.('.sats-converted') &&
+    //                     !shouldSkipAmazonElement(node)) {
+    //                     processElement(node);
+    //                 }
+    //             });
+    //         });
+    //     });
 
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
-    }
+    //     observer.observe(document.body, {
+    //         childList: true,
+    //         subtree: true
+    //     });
+    // }
 
     // Listen for messages from popup/background
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
