@@ -38,11 +38,12 @@ A Chrome extension that automatically detects and converts all currencies and pr
 
 1. The extension fetches the current Bitcoin price from CoinGecko API
 2. It scans webpages for currency patterns in two ways:
-   - **Text-based detection**: Uses regex to find prices in plain text (e.g., "$19.99", "€25.50")
+   - **Text-based detection**: Uses regex to find prices in plain text (e.g., "$19.99", "€25.50", "$150k")
    - **HTML structure detection**: Identifies complex price structures used by e-commerce sites
-3. Detected prices are converted to USD equivalent (if not already USD)
-4. USD amounts are then converted to Bitcoin Sats (1 BTC = 100,000,000 sats)
-5. Original prices are replaced with orange-highlighted Sats values
+3. **Numerical abbreviations** are automatically expanded (K=thousands, M=millions, B=billions, T=trillions)
+4. Detected prices are converted to USD equivalent (if not already USD)
+5. USD amounts are then converted to Bitcoin Sats (1 BTC = 100,000,000 sats)
+6. Original prices are replaced with orange-highlighted Sats values
 
 ### Supported Price Structures
 
@@ -51,6 +52,21 @@ A Chrome extension that automatically detects and converts all currencies and pr
 - `€25.50`, `25.50 EUR`  
 - `£15.99`, `15.99 GBP`
 - `¥1000`, `1000 JPY`
+
+**Abbreviated Formats (K/M/B/T):**
+- `$150k` = `$150,000`
+- `$2.5M` = `$2,500,000`
+- `$1.2B` = `$1,200,000,000`
+- `$500T` = `$500,000,000,000,000`
+- Works with all currencies: `€150k`, `£2.5M`, `¥1B`
+- Case insensitive: `$150K` = `$150k`
+
+**Full Word Abbreviations:**
+- `$45 thousand` = `$45,000`
+- `$2.5 million` = `$2,500,000`
+- `$160 billion` = `$160,000,000,000`
+- `$500 trillion` = `$500,000,000,000,000`
+- Works with all currencies and cases: `€160 Billion`, `£2.5 Million`
 
 **Complex HTML Structures (e.g., Amazon):**
 ```html
@@ -86,9 +102,14 @@ A Chrome extension that automatically detects and converts all currencies and pr
 - Refresh the webpage after installing/enabling the extension
 - Check the popup to ensure conversion is enabled
 
-**Prices not converting?**
+**Prices not converting on page load?**
+- **Fixed in latest version**: Added retry logic to handle Bitcoin price loading delays
+- Check browser console (F12) for "Sats Converter" logs to see if price is loading
+- If prices don't convert initially, wait 2-3 seconds for retry attempts
+- Try refreshing the Bitcoin price in the popup as a fallback
+
+**Other price conversion issues?**
 - Make sure you have an internet connection for Bitcoin price data
-- Try refreshing the Bitcoin price in the popup
 - Some websites may have unusual price formatting that isn't detected
 
 **Want to add more currencies?**

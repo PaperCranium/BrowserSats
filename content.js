@@ -14,24 +14,52 @@
     const currencyPatterns = {
         USD: {
             symbols: ['$', 'USD', 'usd'],
-            regex: /\$\s?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)|(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s?USD/g
+            regex: /\$\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s?\b(thousand|million|billion|trillion)\b|\$\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s?([kKmMbBtT])|(\d+(?:,\d{3})*(?:\.\d+)?)\s?\b(thousand|million|billion|trillion)\b\s?USD|(\d+(?:,\d{3})*(?:\.\d+)?)\s?([kKmMbBtT])\s?USD/gi
         },
         EUR: {
             symbols: ['€', 'EUR', 'eur'],
-            regex: /€\s?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)|(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s?EUR/g
+            regex: /€\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s?\b(thousand|million|billion|trillion)\b|€\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s?([kKmMbBtT])|(\d+(?:,\d{3})*(?:\.\d+)?)\s?\b(thousand|million|billion|trillion)\b\s?EUR|(\d+(?:,\d{3})*(?:\.\d+)?)\s?([kKmMbBtT])\s?EUR/gi
         },
         GBP: {
             symbols: ['£', 'GBP', 'gbp'],
-            regex: /£\s?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)|(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s?GBP/g
+            regex: /£\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s?\b(thousand|million|billion|trillion)\b|£\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s?([kKmMbBtT])|(\d+(?:,\d{3})*(?:\.\d+)?)\s?\b(thousand|million|billion|trillion)\b\s?GBP|(\d+(?:,\d{3})*(?:\.\d+)?)\s?([kKmMbBtT])\s?GBP/gi
         },
         JPY: {
             symbols: ['¥', 'JPY', 'jpy'],
-            regex: /¥\s?(\d{1,3}(?:,\d{3})*)|(\d{1,3}(?:,\d{3})*)\s?JPY/g
+            regex: /¥\s?(\d+(?:,\d{3})*)\s?\b(thousand|million|billion|trillion)\b|¥\s?(\d+(?:,\d{3})*)\s?([kKmMbBtT])|(\d+(?:,\d{3})*)\s?\b(thousand|million|billion|trillion)\b\s?JPY|(\d+(?:,\d{3})*)\s?([kKmMbBtT])\s?JPY/gi
         }
     };
 
     // Pre-parse currency patterns once for performance
     const currencyEntries = Object.entries(currencyPatterns);
+
+    // Helper function to expand numerical abbreviations
+    function expandAbbreviation(numberStr, abbreviation) {
+        let baseNumber = parseFloat(numberStr.replace(/,/g, ''));
+        if (isNaN(baseNumber)) return null;
+        
+        if (!abbreviation || abbreviation.trim() === '') return baseNumber;
+        
+        const multipliers = {
+            // Single letter abbreviations
+            'k': 1000,
+            'K': 1000,
+            'm': 1000000,
+            'M': 1000000,
+            'b': 1000000000,
+            'B': 1000000000,
+            't': 1000000000000,
+            'T': 1000000000000,
+            // Full word abbreviations (case insensitive)
+            'thousand': 1000,
+            'million': 1000000,
+            'billion': 1000000000,
+            'trillion': 1000000000000
+        };
+        
+        const multiplier = multipliers[abbreviation.toLowerCase()];
+        return multiplier ? baseNumber * multiplier : baseNumber;
+    }
 
     // Helper function to check if element should be skipped on Amazon
     function shouldSkipAmazonElement(element) {
@@ -60,18 +88,38 @@
 
     // Initialize the extension
     function init() {
-        // Get Bitcoin price and settings from background
+        // Get user settings first
+        chrome.storage.sync.get(['isEnabled'], (result) => {
+            isEnabled = result.isEnabled !== false; // Default to true
+            
+            // Then get Bitcoin price with retry logic
+            fetchBitcoinPriceWithRetry();
+        });
+    }
+
+    // Fetch Bitcoin price with retry mechanism
+    function fetchBitcoinPriceWithRetry(attempt = 1, maxAttempts = 3) {
         chrome.runtime.sendMessage({action: 'getBitcoinPrice'}, (response) => {
             if (response && response.price) {
                 bitcoinPrice = response.price;
-                // Get user settings
-                chrome.storage.sync.get(['isEnabled'], (result) => {
-                    isEnabled = result.isEnabled !== false; // Default to true
-                    if (isEnabled && bitcoinPrice) {
-                        processPage();
-                        // observeChanges();
-                    }
-                });
+                console.log(`Sats Converter: Bitcoin price loaded: $${bitcoinPrice}`);
+                
+                if (isEnabled && bitcoinPrice) {
+                    processPage();
+                    observeChanges();
+                }
+            } else if (attempt < maxAttempts) {
+                // Retry after a delay
+                console.log(`Sats Converter: Bitcoin price not ready, retrying (${attempt}/${maxAttempts})...`);
+                setTimeout(() => {
+                    fetchBitcoinPriceWithRetry(attempt + 1, maxAttempts);
+                }, 1000 * attempt); // Exponential backoff: 1s, 2s, 3s
+            } else {
+                console.log('Sats Converter: Failed to get Bitcoin price after', maxAttempts, 'attempts');
+                // Still set up observer in case price comes later via updatePrice message
+                if (isEnabled) {
+                    observeChanges();
+                }
             }
         });
     }
@@ -113,7 +161,6 @@
 
         // Skip Amazon comparison table elements
         if (shouldSkipAmazonElement(textNode.parentNode)) {
-            console.log('skipping amazon element in processTextNode');
             return;
         }
         
@@ -122,9 +169,35 @@
         
                 // Check each currency pattern
         currencyEntries.forEach(([currency, pattern]) => {
-            text = text.replace(pattern.regex, (match, group1, group2) => {
+            text = text.replace(pattern.regex, (match, g1, g2, g3, g4, g5, g6, g7, g8) => {
                 hasMatch = true;
-                const amount = parseFloat((group1 || group2).replace(/,/g, ''));
+                
+                // Determine number and abbreviation from the captured groups
+                let numberStr, abbreviation;
+                
+                if (g1 && g2) {
+                    // Symbol format with full word (e.g., $160 billion)
+                    numberStr = g1;
+                    abbreviation = g2;
+                } else if (g3 && g4) {
+                    // Symbol format with single letter (e.g., $150k)
+                    numberStr = g3;
+                    abbreviation = g4;
+                } else if (g5 && g6) {
+                    // Text format with full word (e.g., 160 billion USD)
+                    numberStr = g5;
+                    abbreviation = g6;
+                } else if (g7 && g8) {
+                    // Text format with single letter (e.g., 150k USD)
+                    numberStr = g7;
+                    abbreviation = g8;
+                } else {
+                    return match;
+                }
+                
+                const amount = expandAbbreviation(numberStr, abbreviation);
+                if (amount === null || isNaN(amount)) return match;
+                
                 const sats = convertToSats(amount, currency);
                  
                 if (sats !== null && sats < 100000000) {
@@ -162,7 +235,6 @@
 
         // Skip Amazon comparison table elements
         if (shouldSkipAmazonElement(element))  {
-            console.log('skipping amazon element in processStructuredPrices');
             return;
         }
 
@@ -174,7 +246,6 @@
                     || container.classList.contains('sats-converted') 
                     || container.classList.contains('a-offscreen') 
                     || shouldSkipAmazonElement(container)) {
-                        console.log('skipping amazon element in processStructuredPrices');
                         return;
                     }
             
@@ -185,7 +256,34 @@
             if (symbolEl && wholeEl && fractionEl) {
                 const symbol = symbolEl.textContent.trim();
                 const whole = wholeEl.textContent.replace(/[.,]/g, ''); // Remove any decimal points
-                const fraction = fractionEl.textContent.trim();
+                const fractionText = fractionEl.textContent.trim();
+                
+                // Check if fraction contains abbreviation (letters or full words)
+                let amount;
+                
+                // First check if fraction is just a full word abbreviation
+                if (fractionText.match(/^\b(thousand|million|billion|trillion)\b$/i)) {
+                    // Handle case where fraction is just the word (e.g., $160 billion)
+                    amount = expandAbbreviation(whole, fractionText);
+                } else {
+                    const abbreviationMatch = fractionText.match(/^(\d+)([kKmMbBtT])$/i);
+                    
+                    if (abbreviationMatch) {
+                        const fraction = abbreviationMatch[1];
+                        const abbreviation = abbreviationMatch[2];
+                        
+                        if (abbreviation) {
+                            // Handle abbreviated format like $150k (whole=150, fraction=k)
+                            amount = expandAbbreviation(whole, abbreviation);
+                        } else {
+                            // Normal decimal format
+                            amount = parseFloat(`${whole}.${fraction}`);
+                        }
+                    } else {
+                        // Fallback to original logic - normal decimal
+                        amount = parseFloat(`${whole}.${fractionText}`);
+                    }
+                }
                 
                 // Determine currency from symbol
                 let currency = 'USD';
@@ -194,14 +292,13 @@
                 else if (symbol === '£') currency = 'GBP';
                 else if (symbol === '¥') currency = 'JPY';
                 
-                const amount = parseFloat(`${whole}.${fraction}`);
-                if (!isNaN(amount)) {
+                if (!isNaN(amount) && amount !== null) {
                      const sats = convertToSats(amount, currency);
                      
                      if (sats !== null && sats < 100000000) {
                          const satsIconURL = chrome.runtime.getURL('icons/icon16.png');
                          isProcessingOwnChanges = true;
-                         container.innerHTML = `<span class="sats-converted" style="color: #f7931a; font-weight: bold; white-space: nowrap;"><img src="${satsIconURL}" style="height: 15px; width: 15px; vertical-align: middle; margin-right: 2px;">${formatNumber(sats)}</span>`;
+                         container.innerHTML = `<span class="sats-converted" style="color: #f7931a; font-weight: bold; white-space: nowrap;"><img src="${satsIconURL}" style="height: 18px; width: 18px; vertical-align: middle; margin-right: 2px;">${formatNumber(sats)}</span>`;
                          isProcessingOwnChanges = false;
                      } else if (sats !== null && sats >= 100000000) {
                          const btcAmount = formatNumber((sats / 100000000).toFixed(3));
@@ -266,27 +363,27 @@
     }
 
     // Observe DOM changes for dynamic content
-    // function observeChanges() {
-    //     const observer = new MutationObserver((mutations) => {
-    //         if (!isEnabled || !bitcoinPrice || isProcessingOwnChanges) return;
+    function observeChanges() {
+        const observer = new MutationObserver((mutations) => {
+            if (!isEnabled || !bitcoinPrice || isProcessingOwnChanges) return;
             
-    //         mutations.forEach((mutation) => {
-    //             mutation.addedNodes.forEach((node) => {
-    //                 if (node.nodeType === Node.ELEMENT_NODE && 
-    //                     !node.classList?.contains('sats-converted') &&
-    //                     !node.querySelector?.('.sats-converted') &&
-    //                     !shouldSkipAmazonElement(node)) {
-    //                     processElement(node);
-    //                 }
-    //             });
-    //         });
-    //     });
+            mutations.forEach((mutation) => {
+                mutation.addedNodes.forEach((node) => {
+                    if (node.nodeType === Node.ELEMENT_NODE && 
+                        !node.classList?.contains('sats-converted') &&
+                        !node.querySelector?.('.sats-converted') &&
+                        !shouldSkipAmazonElement(node)) {
+                        processElement(node);
+                    }
+                });
+            });
+        });
 
-    //     observer.observe(document.body, {
-    //         childList: true,
-    //         subtree: true
-    //     });
-    // }
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+    }
 
     // Listen for messages from popup/background
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -300,7 +397,8 @@
             }
         } else if (request.action === 'updatePrice') {
             bitcoinPrice = request.price;
-            if (isEnabled) {
+            console.log(`Sats Converter: Price updated via message: $${bitcoinPrice}`);
+            if (isEnabled && bitcoinPrice) {
                 processPage();
             }
         }
