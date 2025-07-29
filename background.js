@@ -49,6 +49,20 @@ async function fetchBitcoinPrice() {
     }
 }
 
+// Notify all content scripts about price updates
+function notifyContentScripts(price) {
+    chrome.tabs.query({}, (tabs) => {
+        tabs.forEach(tab => {
+            chrome.tabs.sendMessage(tab.id, {
+                action: 'updatePrice',
+                price: price
+            }).catch(() => {
+                // Ignore errors for tabs that don't have content script
+            });
+        });
+    });
+}
+
 // Initialize extension on startup
 async function initialize() {
     console.log('Sats Converter extension starting...');
@@ -58,13 +72,29 @@ async function initialize() {
     if (result.bitcoinPrice) {
         bitcoinPrice = result.bitcoinPrice;
         lastFetchTime = result.lastFetchTime || 0;
+        console.log(`Background: Loaded cached Bitcoin price: $${bitcoinPrice}`);
+        
+        // Notify content scripts about cached price
+        notifyContentScripts(bitcoinPrice);
     }
     
     // Fetch fresh price
-    await fetchBitcoinPrice();
+    const freshPrice = await fetchBitcoinPrice();
+    if (freshPrice && freshPrice !== bitcoinPrice) {
+        // Notify content scripts about fresh price update
+        console.log(`Background: Notifying content scripts of fresh price: $${freshPrice}`);
+        notifyContentScripts(freshPrice);
+    }
     
     // Set up periodic price updates
-    setInterval(fetchBitcoinPrice, CACHE_DURATION);
+    setInterval(() => {
+        fetchBitcoinPrice().then(price => {
+            if (price && price !== bitcoinPrice) {
+                console.log(`Background: Price changed, notifying content scripts: $${price}`);
+                notifyContentScripts(price);
+            }
+        });
+    }, CACHE_DURATION);
 }
 
 // Handle messages from content scripts and popup
@@ -89,16 +119,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             sendResponse({ price: price });
             
             // Notify all content scripts about price update
-            chrome.tabs.query({}, (tabs) => {
-                tabs.forEach(tab => {
-                    chrome.tabs.sendMessage(tab.id, {
-                        action: 'updatePrice',
-                        price: price
-                    }).catch(() => {
-                        // Ignore errors for tabs that don't have content script
-                    });
-                });
-            });
+            if (price) {
+                console.log(`Background: Manual refresh, notifying content scripts: $${price}`);
+                notifyContentScripts(price);
+            }
         }).catch(error => {
             console.error('Error refreshing Bitcoin price:', error);
             sendResponse({ price: null });

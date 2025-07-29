@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sats Converter Test Page</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        .test-title { font-weight: bold; color: #333; margin-bottom: 10px; }
+        .price { background: #f0f0f0; padding: 2px 4px; margin: 2px; }
+    </style>
+</head>
+<body>
+    <h1>Sats Converter Test Cases</h1>
+    
+    <div class="test-section">
+        <div class="test-title">Single Letter Abbreviations:</div>
+        <p>Product costs <span class="price">$45k</span> and shipping is <span class="price">$2.5M</span></p>
+        <p>European price: <span class="price">€150k</span> and British price: <span class="price">£2.3M</span></p>
+        <p>Large amounts: <span class="price">$1B</span> and <span class="price">$5.7T</span></p>
+    </div>
+    
+    <div class="test-section">
+        <div class="test-title">Full Word Abbreviations (Previously Broken):</div>
+        <p>Every man, woman and child owes over <span class="price">$45 thousand</span> courtesy of the government.</p>
+        <p>Victoria is in debt to the tune of <span class="price">$160 billion</span>. The fourth most indebted state.</p>
+        <p>The project will cost <span class="price">€2.5 million</span> over three years.</p>
+        <p>Global GDP is approximately <span class="price">$100 trillion</span> annually.</p>
+        <p><em>Note: These should NOT show partial words like "housand", "illion", "rillion"</em></p>
+    </div>
+    
+    <div class="test-section">
+        <div class="test-title">Mixed Formats (Regression Test):</div>
+        <p>Range from <span class="price">$50k</span> to <span class="price">$2 million</span></p>
+        <p>Budget: <span class="price">€500K</span> or <span class="price">€0.5 Million</span></p>
+        <p>Investment: <span class="price">£1.2B</span> versus <span class="price">£1.2 billion</span></p>
+        <p>Compare: <span class="price">$3T</span> and <span class="price">$3 trillion</span> should be equal</p>
+        <p><em>Note: Both single letter and full word formats should work correctly</em></p>
+    </div>
+    
+    <div class="test-section">
+        <div class="test-title">Regular Prices (should still work):</div>
+        <p>Regular prices: <span class="price">$19.99</span>, <span class="price">€25.50</span>, <span class="price">£15.99</span></p>
+        <p>Large regular: <span class="price">$1,234,567.89</span></p>
+    </div>
+    
+    <div class="test-section">
+        <div class="test-title">Amazon-style Structure:</div>
+        <span aria-hidden="true">
+            <span class="a-price-symbol">$</span>
+            <span class="a-price-whole">160<span class="a-price-decimal">.</span></span>
+            <span class="a-price-fraction">billion</span>
+        </span>
+    </div>
+    
+    <p><strong>Instructions:</strong> Install the Sats Converter extension and visit this page. All prices above should be converted to Sats values with Bitcoin icons.</p>
+</body>
+</html> 
