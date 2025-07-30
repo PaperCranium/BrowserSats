@@ -1,7 +1,7 @@
 // Sats Converter Background Script
 let bitcoinPrice = null;
 let lastFetchTime = 0;
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const CACHE_DURATION = 60 * 60 * 1000; // 1 hour
 
 // Fetch Bitcoin price from CoinGecko API
 async function fetchBitcoinPrice() {
